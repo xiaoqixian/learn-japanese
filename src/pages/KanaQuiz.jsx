@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   romajiMap,
@@ -7,8 +7,37 @@ import {
   GOJUON_ROWS,
   gojuonExtra,
   allRomaji,
+  kanaGroups,
 } from '../data/kana'
 import './KanaQuiz.css'
+
+// ── Weighted random selection for error-driven repetition ──────────
+const BASE_WEIGHT = 1
+const DIFFICULTY_FACTOR = 0.5 // each difficulty point adds 0.5 to the weight
+const MAX_WEIGHT = 4 // cap at 4× the base weight
+
+// Difficulty score modifiers
+const WRONG_PENALTY = 1.0 // added to score on wrong answer
+const CORRECT_REWARD = 0.5 // subtracted from score on correct answer (floor 0)
+
+// Think-time penalty (0-2s = no penalty, then linearly up to cap)
+const THINK_THRESHOLD = 2 // seconds before penalty kicks in
+const THINK_FACTOR = 0.3 // penalty per second beyond threshold
+const THINK_MAX = 3.0 // maximum think-time penalty
+
+function pickWeightedRomaji(romajiList, difficultyScores) {
+  const weights = romajiList.map((romaji) => {
+    const score = difficultyScores[romaji] || 0
+    return Math.min(BASE_WEIGHT + score * DIFFICULTY_FACTOR, MAX_WEIGHT)
+  })
+  const total = weights.reduce((s, w) => s + w, 0)
+  let rand = Math.random() * total
+  for (let i = 0; i < romajiList.length; i++) {
+    rand -= weights[i]
+    if (rand <= 0) return romajiList[i]
+  }
+  return romajiList[romajiList.length - 1]
+}
 
 function getMeta(mode) {
   if (mode === 'hiragana')
@@ -18,8 +47,8 @@ function getMeta(mode) {
   return { label: '混合模式', sub: 'まぜモード' }
 }
 
-function generateQuestion(mode, quizPreference = 'mixed') {
-  const romaji = allRomaji[Math.floor(Math.random() * allRomaji.length)]
+function generateQuestion(mode, quizPreference = 'mixed', difficultyScores = {}, availableRomaji = allRomaji) {
+  const romaji = pickWeightedRomaji(availableRomaji, difficultyScores)
   const mapping = romajiMap[romaji]
   // Respect user's quiz preference:
   // 'type-only' → always type mode, 'grid-only' → always grid mode, 'mixed' → random
@@ -165,6 +194,92 @@ export default function KanaQuiz() {
   const [score, setScore] = useState({ correct: 0, wrong: 0, streak: 0 })
   const inputRef = useRef(null)
 
+  // Difficulty scores per romaji (float), persisted to localStorage.
+  // Higher = more frequently selected. Decremented on correct answers,
+  // incremented on wrong answers and long think times.
+  const [difficultyScores, setDifficultyScores] = useState(() => {
+    try {
+      const stored = localStorage.getItem('kana-difficulty-scores')
+      return stored ? JSON.parse(stored) : {}
+    } catch {
+      return {}
+    }
+  })
+
+  // Track question start time for think-time analysis
+  const questionStartRef = useRef(Date.now())
+
+  // Persist difficulty scores whenever they change
+  useEffect(() => {
+    localStorage.setItem('kana-difficulty-scores', JSON.stringify(difficultyScores))
+  }, [difficultyScores])
+
+  // Calculate elapsed think time in seconds
+  const getElapsed = () => (Date.now() - questionStartRef.current) / 1000
+
+  // Compute extra penalty from think time
+  const thinkTimePenalty = (elapsed) => {
+    if (elapsed <= THINK_THRESHOLD) return 0
+    return Math.min((elapsed - THINK_THRESHOLD) * THINK_FACTOR, THINK_MAX)
+  }
+
+  // Record a wrong answer: increase difficulty score
+  const recordWrong = useCallback((romaji) => {
+    setDifficultyScores((prev) => ({
+      ...prev,
+      [romaji]: (prev[romaji] || 0) + WRONG_PENALTY,
+    }))
+  }, [])
+
+  // Record a correct answer: decrease difficulty score (floor 0)
+  const recordCorrect = useCallback((romaji) => {
+    setDifficultyScores((prev) => ({
+      ...prev,
+      [romaji]: Math.max(0, (prev[romaji] || 0) - CORRECT_REWARD),
+    }))
+  }, [])
+
+  // Apply think-time penalty regardless of correct/wrong
+  const applyThinkPenalty = useCallback((romaji) => {
+    const elapsed = getElapsed()
+    const penalty = thinkTimePenalty(elapsed)
+    if (penalty > 0) {
+      setDifficultyScores((prev) => ({
+        ...prev,
+        [romaji]: (prev[romaji] || 0) + penalty,
+      }))
+    }
+  }, [])
+
+  // ── Group selection ──────────────────────────────────────────
+  const ALL_GROUP_KEYS = kanaGroups.map((g) => g.key)
+  const [selectedGroups, setSelectedGroups] = useState(ALL_GROUP_KEYS)
+
+  const allSelected = selectedGroups.length === ALL_GROUP_KEYS.length
+
+  // Compute available romaji based on selected groups (+ always include ん)
+  const availableRomaji = useMemo(() => {
+    const set = new Set()
+    for (const key of selectedGroups) {
+      const group = kanaGroups.find((g) => g.key === key)
+      if (group) group.romaji.forEach((r) => set.add(r))
+    }
+    set.add('n') // ん always included
+    return [...set]
+  }, [selectedGroups])
+
+  const toggleAll = () => {
+    setSelectedGroups(allSelected ? [] : ALL_GROUP_KEYS)
+  }
+
+  const toggleGroup = (key) => {
+    setSelectedGroups((prev) =>
+      prev.includes(key)
+        ? prev.filter((k) => k !== key)
+        : [...prev, key]
+    )
+  }
+
   // Grid-mode selection state
   const [gridState, setGridState] = useState({
     selected: { hiragana: null, katakana: null },
@@ -172,14 +287,15 @@ export default function KanaQuiz() {
   })
 
   const advance = useCallback(() => {
-    setQuestion(generateQuestion(mode, quizPreference))
+    questionStartRef.current = Date.now()
+    setQuestion(generateQuestion(mode, quizPreference, difficultyScores, availableRomaji))
     setInput('')
     setResult(null)
     setGridState({
       selected: { hiragana: null, katakana: null },
       found: { hiragana: false, katakana: false },
     })
-  }, [mode, quizPreference])
+  }, [mode, quizPreference, difficultyScores, availableRomaji])
 
   // Auto-focus input in type mode
   useEffect(() => {
@@ -200,8 +316,11 @@ export default function KanaQuiz() {
         wrong: s.wrong,
         streak: s.streak + 1,
       }))
+      recordCorrect(question.romaji)
+      applyThinkPenalty(question.romaji)
       setTimeout(() => advance(), 300)
     } else {
+      recordWrong(question.romaji)
       setResult('wrong')
       setScore((s) => ({ ...s, wrong: s.wrong + 1, streak: 0 }))
       setShaking(true)
@@ -237,15 +356,17 @@ export default function KanaQuiz() {
           wrong: s.wrong,
           streak: s.streak + 1,
         }))
+        recordCorrect(question.romaji)
+        applyThinkPenalty(question.romaji)
         setTimeout(() => advance(), 400)
       }
     } else {
+      recordWrong(question.romaji)
       setResult('wrong')
       setScore((s) => ({ ...s, wrong: s.wrong + 1, streak: 0 }))
       setShaking(true)
       setTimeout(() => {
         setShaking(false)
-        setResult(null)
         setGridState({
           selected: { hiragana: null, katakana: null },
           found: { hiragana: false, katakana: false },
@@ -280,102 +401,126 @@ export default function KanaQuiz() {
   }
 
   return (
-    <div className="quiz">
-      {/* Header */}
-      <div className="quiz-header">
-        <h1 className="quiz-title">{label}</h1>
-        <span className="quiz-sub">{sub}</span>
-      </div>
+    <div className="quiz-wrapper">
+      <div className="quiz">
+        {/* Header */}
+        <div className="quiz-header">
+          <h1 className="quiz-title">{label}</h1>
+          <span className="quiz-sub">{sub}</span>
+        </div>
 
-      {/* Score bar */}
-      <div className="score-bar">
-        <div className="score-item correct-score">
-          ✓ {score.correct}
+        {/* Score bar */}
+        <div className="score-bar">
+          <div className="score-item correct-score">
+            ✓ {score.correct}
+          </div>
+          <div className="score-item wrong-score">
+            ✗ {score.wrong}
+          </div>
+          {score.streak >= 3 && (
+            <div className="score-item streak">
+              🔥 {score.streak}连击!
+            </div>
+          )}
         </div>
-        <div className="score-item wrong-score">
-          ✗ {score.wrong}
+
+        {/* Mode selector */}
+        <div className="mode-selector">
+          <button
+            className={`mode-btn ${quizPreference === 'mixed' ? 'active' : ''}`}
+            onClick={() => setQuizPreference('mixed')}
+          >
+            混合
+          </button>
+          <button
+            className={`mode-btn ${quizPreference === 'type-only' ? 'active' : ''}`}
+            onClick={() => setQuizPreference('type-only')}
+          >
+            只发送假名
+          </button>
+          <button
+            className={`mode-btn ${quizPreference === 'grid-only' ? 'active' : ''}`}
+            onClick={() => setQuizPreference('grid-only')}
+          >
+            只发送发音
+          </button>
         </div>
-        {score.streak >= 3 && (
-          <div className="score-item streak">
-            🔥 {score.streak}连击!
+
+        {/* Prompt card */}
+        <div
+          className={`quiz-card ${shaking ? 'shake' : ''} ${
+            result === 'correct' ? 'card-correct' : ''
+          }`}
+        >
+          <div className="quiz-prompt-label">{promptLabel}</div>
+          <div className="quiz-prompt">{question.prompt}</div>
+        </div>
+
+        {/* Type mode: textual input */}
+        {isTypeMode && (
+          <div className="input-wrapper">
+            <input
+              ref={inputRef}
+              type="text"
+              className={`quiz-input ${
+                result === 'correct' ? 'input-correct' : ''
+              } ${result === 'wrong' ? 'input-wrong' : ''}`}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="输入罗马音..."
+              autoComplete="off"
+              autoFocus
+            />
+          </div>
+        )}
+
+        {/* Grid mode: gojuon chart click */}
+        {isGridMode && (
+          <div className="grids-wrapper">
+            {showHiraganaGrid && (
+              <GojuonGrid
+                gridType="hiragana"
+                label="平假名"
+                found={gridState.found.hiragana}
+                selected={gridState.selected.hiragana}
+                onCellClick={handleGridClick}
+              />
+            )}
+            {showKatakanaGrid && (
+              <GojuonGrid
+                gridType="katakana"
+                label="片假名"
+                found={gridState.found.katakana}
+                selected={gridState.selected.katakana}
+                onCellClick={handleGridClick}
+              />
+            )}
           </div>
         )}
       </div>
 
-      {/* Mode selector */}
-      <div className="mode-selector">
+      {/* Sidebar: group selection */}
+      <div className="quiz-sidebar">
+        <div className="sidebar-label">假名分组</div>
         <button
-          className={`mode-btn ${quizPreference === 'mixed' ? 'active' : ''}`}
-          onClick={() => setQuizPreference('mixed')}
+          className={`sidebar-btn sidebar-btn-all ${allSelected ? 'active' : ''}`}
+          onClick={toggleAll}
         >
-          混合
+          all
         </button>
-        <button
-          className={`mode-btn ${quizPreference === 'type-only' ? 'active' : ''}`}
-          onClick={() => setQuizPreference('type-only')}
-        >
-          只发送假名
-        </button>
-        <button
-          className={`mode-btn ${quizPreference === 'grid-only' ? 'active' : ''}`}
-          onClick={() => setQuizPreference('grid-only')}
-        >
-          只发送发音
-        </button>
-      </div>
-
-      {/* Prompt card */}
-      <div
-        className={`quiz-card ${shaking ? 'shake' : ''} ${
-          result === 'correct' ? 'card-correct' : ''
-        }`}
-      >
-        <div className="quiz-prompt-label">{promptLabel}</div>
-        <div className="quiz-prompt">{question.prompt}</div>
-      </div>
-
-      {/* Type mode: textual input */}
-      {isTypeMode && (
-        <div className="input-wrapper">
-          <input
-            ref={inputRef}
-            type="text"
-            className={`quiz-input ${
-              result === 'correct' ? 'input-correct' : ''
-            } ${result === 'wrong' ? 'input-wrong' : ''}`}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="输入罗马音..."
-            autoComplete="off"
-            autoFocus
-          />
+        <div className="group-grid">
+          {kanaGroups.map((g) => (
+            <button
+              key={g.key}
+              className={`sidebar-btn ${selectedGroups.includes(g.key) ? 'active' : ''}`}
+              onClick={() => toggleGroup(g.key)}
+            >
+              {g.label}
+            </button>
+          ))}
         </div>
-      )}
-
-      {/* Grid mode: gojuon chart click */}
-      {isGridMode && (
-        <div className="grids-wrapper">
-          {showHiraganaGrid && (
-            <GojuonGrid
-              gridType="hiragana"
-              label="平假名"
-              found={gridState.found.hiragana}
-              selected={gridState.selected.hiragana}
-              onCellClick={handleGridClick}
-            />
-          )}
-          {showKatakanaGrid && (
-            <GojuonGrid
-              gridType="katakana"
-              label="片假名"
-              found={gridState.found.katakana}
-              selected={gridState.selected.katakana}
-              onCellClick={handleGridClick}
-            />
-          )}
-        </div>
-      )}
+      </div>
     </div>
   )
 }

@@ -193,3 +193,18 @@ export const gojuonGrid = [
 // The standalone ん／ン at the bottom (not part of the main 10-row grid)
 export const gojuonExtra = { hiragana: 'ん', katakana: 'ン', romaji: 'n' }
 
+// Group definitions for group-selection filter (2×5 sidebar panel)
+// Each group maps to one 五十音 row; ん is always included regardless of selection.
+export const kanaGroups = [
+  { key: 'a', label: 'a', romaji: ['a', 'i', 'u', 'e', 'o'] },
+  { key: 'k', label: 'k', romaji: ['ka', 'ki', 'ku', 'ke', 'ko'] },
+  { key: 's', label: 's', romaji: ['sa', 'shi', 'su', 'se', 'so'] },
+  { key: 't', label: 't', romaji: ['ta', 'chi', 'tsu', 'te', 'to'] },
+  { key: 'n', label: 'n', romaji: ['na', 'ni', 'nu', 'ne', 'no'] },
+  { key: 'h', label: 'h', romaji: ['ha', 'hi', 'fu', 'he', 'ho'] },
+  { key: 'm', label: 'm', romaji: ['ma', 'mi', 'mu', 'me', 'mo'] },
+  { key: 'y', label: 'y', romaji: ['ya', 'yu', 'yo'] },
+  { key: 'r', label: 'r', romaji: ['ra', 'ri', 'ru', 're', 'ro'] },
+  { key: 'w', label: 'w', romaji: ['wa', 'wo'] },
+]
+
