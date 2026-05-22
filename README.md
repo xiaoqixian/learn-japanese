@@ -1,17 +1,68 @@
-# 一个日语学习App
+# 日本語学習 (Learn Japanese Kana)
 
-基于React框架的纯前端网站，主页包含多个模块，用户通过点击对应的模块进入对应的学习页面。
-目前先做平假名和片假名的学习模块。
+An interactive web application for learning Japanese Hiragana and Katakana characters through adaptive quizzes. Built with React and Vite.
 
-需要支持light mode和dark mode的调节吗，设计风格应该尽量简洁和现代化。
+## Features
 
-### 平假名和片假名
+- **Hiragana & Katakana Quizzes** — Practice all 46 basic kana characters in dedicated modes or a mixed challenge.
+- **Two Answer Modes** — Type the romaji reading directly, or click on the interactive Gojūon (五十音) grid to match characters by sound.
+- **Adaptive Difficulty** — Characters you struggle with appear more frequently using a weighted random selection algorithm, ensuring focused practice on weak spots.
+- **Think-Time Tracking** — Slow responses increase the difficulty weight of that character, encouraging faster recall.
+- **Group Filtering** — Filter kana by consonant group (a, ka, sa, ta, na, ha, ma, ya, ra, wa) to focus on specific rows of the Gojūon chart.
+- **Dark / Light Theme** — Toggle between color schemes, with preference persisted across sessions.
+- **Score & Streak Tracking** — Real-time feedback on correct and incorrect answers, with a streak counter for motivation.
 
-一个类似英语单词学习的页面，主体是一个测试内容：平假名或片假名或一个发音（如"ta"），
-然后下面是一个下划线的输入框，用户输入内容回车确定后检测是否正确决定是否进入下一个，
-如果不正确，清空输入框且测试内容有一个抖动的特效表示输入错误。
+## Tech Stack
 
-用户应该可以选择当前测试平假名还是片假名或者两者混合，测试应该随机混合两种模式：
-1. 发送一个假名，用户需要在输入框中输入正确的发音
-2. 发送一个发音，则不存在输入框，而是显示所有的假名（如果是平假名模式，则只显示所有的平假名；片假名模式亦然）。
-假名不能随机摆放，而是按照五十音图的方式摆放，鼠标移动到某个假名上时有高亮。如果是混合假名模式，需要同时选中对应的平假名和片假名才算通过。
+| Category | Technology |
+|----------|------------|
+| Framework | React 18 |
+| Routing | React Router v6 |
+| Build Tool | Vite 5 |
+| Styling | CSS (custom properties for theming) |
+
+## Getting Started
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) (v18 or later)
+
+### Installation
+
+```bash
+# Clone the repository
+git clone <repo-url>
+cd learn-jap
+
+# Install dependencies
+npm install
+```
+
+### Development
+
+Start the development server with hot-reload:
+
+```bash
+npm run dev
+```
+
+The app will be available at `http://localhost:5173` by default.
+
+### Build for Production
+
+```bash
+npm run build
+```
+
+The output will be generated in the `dist/` directory.
+
+### Preview Production Build
+
+```bash
+npm run preview
+```
+
+## License
+
+MIT
+
