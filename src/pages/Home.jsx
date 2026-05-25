@@ -11,6 +11,14 @@ export default function Home() {
       icon: 'あ',
       path: '/quiz',
     },
+    {
+      id: 'wordbook',
+      title: '单词本',
+      subtitle: 'たんごちょう',
+      description: '单词管理 · 释义测试',
+      icon: '📖',
+      path: '/wordbook',
+    },
   ]
 
   return (
