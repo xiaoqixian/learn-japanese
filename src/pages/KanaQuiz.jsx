@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { useParams } from 'react-router-dom'
 import {
   romajiMap,
   gojuonGrid,
@@ -182,12 +181,11 @@ function GojuonGrid({
 
 // ── Main Quiz Component ────────────────────────────────────────────
 export default function KanaQuiz() {
-  const { mode } = useParams()
-  const { label, sub } = getMeta(mode)
-  const isMixed = mode === 'mixed'
+  const [kanaMode, setKanaMode] = useState('hiragana')
+  const isMixed = kanaMode === 'mixed'
 
   const [quizPreference, setQuizPreference] = useState('mixed') // 'mixed' | 'type-only' | 'grid-only'
-  const [question, setQuestion] = useState(() => generateQuestion(mode, quizPreference))
+  const [question, setQuestion] = useState(() => generateQuestion(kanaMode, quizPreference))
   const [input, setInput] = useState('')
   const [shaking, setShaking] = useState(false)
   const [result, setResult] = useState(null) // 'correct' | 'wrong' | null
@@ -288,14 +286,14 @@ export default function KanaQuiz() {
 
   const advance = useCallback(() => {
     questionStartRef.current = Date.now()
-    setQuestion(generateQuestion(mode, quizPreference, difficultyScores, availableRomaji))
+    setQuestion(generateQuestion(kanaMode, quizPreference, difficultyScores, availableRomaji))
     setInput('')
     setResult(null)
     setGridState({
       selected: { hiragana: null, katakana: null },
       found: { hiragana: false, katakana: false },
     })
-  }, [mode, quizPreference, difficultyScores, availableRomaji])
+  }, [kanaMode, quizPreference, difficultyScores, availableRomaji])
 
   // Auto-focus input in type mode
   useEffect(() => {
@@ -385,9 +383,9 @@ export default function KanaQuiz() {
   const isTypeMode = question.quizMode === 'type'
   const isGridMode = question.quizMode === 'grid'
   const showHiraganaGrid =
-    isGridMode && (mode === 'hiragana' || isMixed)
+    isGridMode && (kanaMode === 'hiragana' || isMixed)
   const showKatakanaGrid =
-    isGridMode && (mode === 'katakana' || isMixed)
+    isGridMode && (kanaMode === 'katakana' || isMixed)
   const needsBothInGrid = isMixed && isGridMode
 
   // ── Prompt label text ──────────────────────────────────────────
@@ -397,16 +395,32 @@ export default function KanaQuiz() {
   } else if (needsBothInGrid) {
     promptLabel = '请分别点击对应的平假名和片假名'
   } else {
-    promptLabel = `请点击对应的${mode === 'hiragana' ? '平假名' : '片假名'}`
+    promptLabel = `请点击对应的${kanaMode === 'hiragana' ? '平假名' : '片假名'}`
   }
 
   return (
     <div className="quiz-wrapper">
       <div className="quiz">
-        {/* Header */}
-        <div className="quiz-header">
-          <h1 className="quiz-title">{label}</h1>
-          <span className="quiz-sub">{sub}</span>
+        {/* Kana mode tabs */}
+        <div className="kana-mode-tabs">
+          <button
+            className={`kana-mode-tab ${kanaMode === 'hiragana' ? 'active' : ''}`}
+            onClick={() => setKanaMode('hiragana')}
+          >
+            平假名
+          </button>
+          <button
+            className={`kana-mode-tab ${kanaMode === 'katakana' ? 'active' : ''}`}
+            onClick={() => setKanaMode('katakana')}
+          >
+            片假名
+          </button>
+          <button
+            className={`kana-mode-tab ${kanaMode === 'mixed' ? 'active' : ''}`}
+            onClick={() => setKanaMode('mixed')}
+          >
+            混合
+          </button>
         </div>
 
         {/* Score bar */}

@@ -14,7 +14,7 @@ export default function App() {
           <main className="main">
             <Routes>
               <Route path="/" element={<Home />} />
-              <Route path="/kana/:mode" element={<KanaQuiz />} />
+              <Route path="/quiz" element={<KanaQuiz />} />
             </Routes>
           </main>
         </div>
