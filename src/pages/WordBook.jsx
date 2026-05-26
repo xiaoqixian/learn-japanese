@@ -11,6 +11,71 @@ import {
 } from '../data/db'
 import './WordBook.css'
 
+// ── Utility ─────────────────────────────────────────────────────
+function splitJp(japanese) {
+  return japanese ? japanese.split('/') : []
+}
+
+// ── Tag Input ──────────────────────────────────────────────────
+function TagInput({ tags, onTagsChange, placeholder, autoFocus }) {
+  const [text, setText] = useState('')
+  const inputRef = useRef(null)
+
+  useEffect(() => {
+    if (autoFocus) inputRef.current?.focus()
+  }, [autoFocus])
+
+  const addTag = (val) => {
+    const v = val.trim()
+    if (!v) return
+    onTagsChange([...tags, v])
+    setText('')
+  }
+
+  const removeTag = (i) => {
+    onTagsChange(tags.filter((_, idx) => idx !== i))
+  }
+
+  const handleKeyDown = (e) => {
+    if (e.key === ' ') {
+      e.preventDefault()
+      addTag(inputRef.current?.value || '')
+    } else if (e.key === 'Backspace' && !inputRef.current?.value && tags.length > 0) {
+      removeTag(tags.length - 1)
+    }
+  }
+
+  return (
+    <div className="wb-tag-input" onClick={() => inputRef.current?.focus()}>
+      {tags.map((t, i) => (
+        <span key={i} className="wb-tag">
+          {t}
+          <button
+            className="wb-tag-x"
+            onClick={(e) => {
+              e.stopPropagation()
+              removeTag(i)
+            }}
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      <input
+        ref={inputRef}
+        className="wb-tag-input-text"
+        type="text"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder={tags.length === 0 ? placeholder : ''}
+        autoFocus={autoFocus}
+        autoComplete="off"
+      />
+    </div>
+  )
+}
+
 // ── File setup screen ──────────────────────────────────────────
 function FileSetup({ onDbReady }) {
   const [error, setError] = useState('')
@@ -75,27 +140,21 @@ function FileSetup({ onDbReady }) {
 
 // ── Add word form ──────────────────────────────────────────────
 function AddWordForm({ onAdded }) {
-  const [japanese, setJapanese] = useState('')
+  const [jpTags, setJpTags] = useState([])
   const [chinese, setChinese] = useState('')
   const [saving, setSaving] = useState(false)
-  const jpRef = useRef(null)
-
-  useEffect(() => {
-    jpRef.current?.focus()
-  }, [])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    const jp = japanese.trim()
+    const jp = jpTags.join('/')
     const cn = chinese.trim()
     if (!jp || !cn) return
 
     setSaving(true)
     try {
       await addWord(jp, cn)
-      setJapanese('')
+      setJpTags([])
       setChinese('')
-      jpRef.current?.focus()
       onAdded()
     } catch (err) {
       // silent
@@ -106,13 +165,11 @@ function AddWordForm({ onAdded }) {
 
   return (
     <form className="wb-add-form" onSubmit={handleSubmit}>
-      <input
-        ref={jpRef}
-        className="wb-input"
-        type="text"
-        placeholder="日语单词..."
-        value={japanese}
-        onChange={(e) => setJapanese(e.target.value)}
+      <TagInput
+        tags={jpTags}
+        onTagsChange={setJpTags}
+        placeholder="日语单词（回车添加多种写法）..."
+        autoFocus
       />
       <input
         className="wb-input"
@@ -138,7 +195,13 @@ function WordList({ words, onDelete }) {
     <div className="wb-list">
       {words.map((w) => (
         <div key={w.id} className="wb-word-item">
-          <div className="wb-word-jp">{w.japanese}</div>
+          <div className="wb-word-jp">
+            {splitJp(w.japanese).map((v, i) => (
+              <span key={i} className="wb-variant">
+                {v}
+              </span>
+            ))}
+          </div>
           <div className="wb-word-cn">{w.chinese}</div>
           <button
             className="wb-word-del"
@@ -157,14 +220,14 @@ function WordList({ words, onDelete }) {
 function QuizMode({ words, onBack }) {
   const [quizWord, setQuizWord] = useState(null)
   const [showJapanese, setShowJapanese] = useState(true)
+  const [jpVariant, setJpVariant] = useState('')
   const [input, setInput] = useState('')
-  const [result, setResult] = useState(null) // 'correct' | 'wrong' | null
+  const [result, setResult] = useState(null)
   const [shaking, setShaking] = useState(false)
   const [score, setScore] = useState({ correct: 0, wrong: 0 })
   const [answerRevealed, setAnswerRevealed] = useState(false)
   const inputRef = useRef(null)
 
-  // Pick a random word
   const pickWord = useCallback(() => {
     if (words.length === 0) return
     const idx = Math.floor(Math.random() * words.length)
@@ -172,6 +235,11 @@ function QuizMode({ words, onBack }) {
     const showJp = Math.random() > 0.5
     setQuizWord(word)
     setShowJapanese(showJp)
+
+    // Pick a random Japanese variant
+    const variants = splitJp(word.japanese)
+    setJpVariant(variants[Math.floor(Math.random() * variants.length)] || word.japanese)
+
     setInput('')
     setResult(null)
     setAnswerRevealed(false)
@@ -182,7 +250,6 @@ function QuizMode({ words, onBack }) {
     pickWord()
   }, [pickWord])
 
-  // Show answer when clicking the word itself
   const handleWordClick = () => {
     setAnswerRevealed(true)
   }
@@ -192,9 +259,12 @@ function QuizMode({ words, onBack }) {
     const trimmed = input.trim()
     if (!trimmed) return
 
-    const correctAnswer = showJapanese ? quizWord.chinese : quizWord.japanese
-    const isCorrect =
-      trimmed.toLowerCase() === correctAnswer.toLowerCase()
+    // Accept any of the Japanese variants as correct
+    const variants = splitJp(quizWord.japanese)
+    const correctAnswer = showJapanese ? quizWord.chinese : variants
+    const isCorrect = showJapanese
+      ? trimmed.toLowerCase() === correctAnswer.toLowerCase()
+      : variants.some((v) => v.toLowerCase() === trimmed.toLowerCase())
 
     if (isCorrect) {
       setResult('correct')
@@ -232,9 +302,9 @@ function QuizMode({ words, onBack }) {
 
   if (!quizWord) return null
 
-  const promptText = showJapanese ? quizWord.japanese : quizWord.chinese
+  const promptText = showJapanese ? jpVariant : quizWord.chinese
   const promptLabel = showJapanese ? '请输入对应的中文释义' : '请输入对应的日语单词'
-  const correctAnswer = showJapanese ? quizWord.chinese : quizWord.japanese
+  const allVariants = splitJp(quizWord.japanese)
 
   return (
     <div className="wb-quiz">
@@ -260,11 +330,10 @@ function QuizMode({ words, onBack }) {
       {answerRevealed && (
         <div className="wb-answer-reveal">
           <div className="wb-answer-label">答案：</div>
-          <div className="wb-answer-text">{correctAnswer}</div>
-          <button
-            className="wb-btn wb-btn-primary"
-            onClick={pickWord}
-          >
+          <div className="wb-answer-text">
+            {showJapanese ? quizWord.chinese : allVariants.join(' / ')}
+          </div>
+          <button className="wb-btn wb-btn-primary" onClick={pickWord}>
             下一题 →
           </button>
         </div>
@@ -297,26 +366,37 @@ function QuizMode({ words, onBack }) {
 // ── Word Table Modal ───────────────────────────────────────────
 function WordTableModal({ words, onClose, onDelete, onUpdate }) {
   const [editingId, setEditingId] = useState(null)
-  const [editJp, setEditJp] = useState('')
+  const [editJpTags, setEditJpTags] = useState([])
   const [editCn, setEditCn] = useState('')
   const [saving, setSaving] = useState(false)
+  const [pendingVariant, setPendingVariant] = useState('')
+  const [deletingId, setDeletingId] = useState(null)
+  const variantInputRef = useRef(null)
 
   const startEdit = (word) => {
+    setDeletingId(null)
     setEditingId(word.id)
-    setEditJp(word.japanese)
+    setEditJpTags(splitJp(word.japanese))
     setEditCn(word.chinese)
+    setPendingVariant('')
   }
 
   const cancelEdit = () => {
     setEditingId(null)
-    setEditJp('')
+    setEditJpTags([])
     setEditCn('')
+    setPendingVariant('')
   }
 
   const handleSave = async () => {
-    const jp = editJp.trim()
+    // Include pending variant if any
+    const allTags = pendingVariant.trim()
+      ? [...editJpTags, pendingVariant.trim()]
+      : editJpTags
+    if (allTags.length === 0) return
+    const jp = allTags.join('/')
     const cn = editCn.trim()
-    if (!jp || !cn || !editingId) return
+    if (!cn || !editingId) return
     setSaving(true)
     try {
       await onUpdate(editingId, jp, cn)
@@ -328,11 +408,56 @@ function WordTableModal({ words, onClose, onDelete, onUpdate }) {
     }
   }
 
-  const handleKeyDown = (e) => {
+  // Mark a word for deletion
+  const startDelete = (id) => {
+    setEditingId(null)
+    setDeletingId(id)
+  }
+
+  // Cancel deletion
+  const cancelDelete = () => {
+    setDeletingId(null)
+  }
+
+  // Confirm deletion
+  const confirmDelete = async () => {
+    if (!deletingId) return
+    setSaving(true)
+    try {
+      await onDelete(deletingId)
+      cancelDelete()
+    } catch {
+      // silent
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Update a specific variant
+  const updateVariant = (idx, value) => {
+    const next = [...editJpTags]
+    next[idx] = value
+    setEditJpTags(next)
+  }
+
+  // Remove a specific variant
+  const removeVariant = (idx) => {
+    setEditJpTags(editJpTags.filter((_, i) => i !== idx))
+  }
+
+  // Add pending variant
+  const addVariant = () => {
+    const v = pendingVariant.trim()
+    if (!v) return
+    setEditJpTags([...editJpTags, v])
+    setPendingVariant('')
+    setTimeout(() => variantInputRef.current?.focus(), 0)
+  }
+
+  const handleVariantKeyDown = (e) => {
     if (e.key === 'Enter') {
-      handleSave()
-    } else if (e.key === 'Escape') {
-      cancelEdit()
+      e.preventDefault()
+      addVariant()
     }
   }
 
@@ -362,14 +487,36 @@ function WordTableModal({ words, onClose, onDelete, onUpdate }) {
                   editingId === w.id ? (
                     <tr key={w.id} className="wb-table-row-editing">
                       <td className="wb-table-jp">
-                        <input
-                          className="wb-table-input"
-                          type="text"
-                          value={editJp}
-                          onChange={(e) => setEditJp(e.target.value)}
-                          onKeyDown={handleKeyDown}
-                          autoFocus
-                        />
+                        <div className="wb-variant-list">
+                          {editJpTags.map((v, i) => (
+                            <span key={i} className="wb-variant-edit">
+                              <input
+                                className="wb-variant-input"
+                                type="text"
+                                value={v}
+                                onChange={(e) => updateVariant(i, e.target.value)}
+                              />
+                              <button
+                                className="wb-variant-del"
+                                onClick={() => removeVariant(i)}
+                                title="删除此写法"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                          <span className="wb-variant-edit wb-variant-new">
+                            <input
+                              ref={variantInputRef}
+                              className="wb-variant-input"
+                              type="text"
+                              value={pendingVariant}
+                              onChange={(e) => setPendingVariant(e.target.value)}
+                              onKeyDown={handleVariantKeyDown}
+                              placeholder="新写法..."
+                            />
+                          </span>
+                        </div>
                       </td>
                       <td className="wb-table-cn">
                         <input
@@ -377,7 +524,6 @@ function WordTableModal({ words, onClose, onDelete, onUpdate }) {
                           type="text"
                           value={editCn}
                           onChange={(e) => setEditCn(e.target.value)}
-                          onKeyDown={handleKeyDown}
                         />
                       </td>
                       <td>
@@ -391,13 +537,17 @@ function WordTableModal({ words, onClose, onDelete, onUpdate }) {
                       </td>
                     </tr>
                   ) : (
-                    <tr key={w.id}>
+                    <tr key={w.id} className={deletingId === w.id ? 'wb-table-row-deleting' : ''}>
                       <td
                         className="wb-table-jp wb-table-cell-clickable"
                         onClick={() => startEdit(w)}
                         title="点击编辑"
                       >
-                        {w.japanese}
+                        {splitJp(w.japanese).map((v, i) => (
+                          <span key={i} className="wb-variant">
+                            {v}
+                          </span>
+                        ))}
                       </td>
                       <td
                         className="wb-table-cn wb-table-cell-clickable"
@@ -409,7 +559,7 @@ function WordTableModal({ words, onClose, onDelete, onUpdate }) {
                       <td>
                         <button
                           className="wb-table-action wb-table-del"
-                          onClick={() => onDelete(w.id)}
+                          onClick={() => startDelete(w.id)}
                           title="删除"
                         >
                           🗑
@@ -422,22 +572,25 @@ function WordTableModal({ words, onClose, onDelete, onUpdate }) {
             </table>
           )}
 
-          {/* Save button at bottom when editing */}
-          {editingId && (
+          {/* Footer: Save/Cancel when editing or deleting */}
+          {(editingId || deletingId) && (
             <div className="wb-modal-footer">
               <button
                 className="wb-btn wb-btn-secondary"
-                onClick={cancelEdit}
+                onClick={editingId ? cancelEdit : cancelDelete}
                 disabled={saving}
               >
                 取消
               </button>
               <button
-                className="wb-btn wb-btn-primary"
-                onClick={handleSave}
-                disabled={saving || !editJp.trim() || !editCn.trim()}
+                className={`wb-btn ${editingId ? 'wb-btn-primary' : 'wb-btn-danger'}`}
+                onClick={editingId ? handleSave : confirmDelete}
+                disabled={
+                  saving ||
+                  (editingId && (editJpTags.length === 0 || !editCn.trim()))
+                }
               >
-                {saving ? '保存中...' : '保存'}
+                {saving ? '保存中...' : editingId ? '保存' : '确认删除'}
               </button>
             </div>
           )}
@@ -570,6 +723,7 @@ export default function WordBook() {
             words={words}
             onClose={() => setShowTable(false)}
             onDelete={handleDelete}
+            onUpdate={handleUpdate}
           />
         )}
       </div>
