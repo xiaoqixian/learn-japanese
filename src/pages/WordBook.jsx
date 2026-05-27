@@ -17,36 +17,48 @@ function splitJp(japanese) {
 }
 
 // ── Tag Input ──────────────────────────────────────────────────
-function TagInput({ tags, onTagsChange, placeholder, autoFocus }) {
+function TagInput({ tags, onTagsChange, placeholder, autoFocus, inputRef, textRef }) {
   const [text, setText] = useState('')
-  const inputRef = useRef(null)
+  const internalRef = useRef(null)
 
   useEffect(() => {
-    if (autoFocus) inputRef.current?.focus()
+    if (autoFocus) internalRef.current?.focus()
   }, [autoFocus])
+
+  // Sync external refs
+  useEffect(() => {
+    if (inputRef) {
+      inputRef.current = internalRef.current
+    }
+  }, [inputRef])
+
+  // Keep textRef in sync with current text so parent can always read latest value
+  if (textRef) {
+    textRef.current = text
+  }
 
   const addTag = (val) => {
     const v = val.trim()
     if (!v) return
-    onTagsChange([...tags, v])
+    onTagsChange((prev) => [...prev, v])
     setText('')
   }
 
   const removeTag = (i) => {
-    onTagsChange(tags.filter((_, idx) => idx !== i))
+    onTagsChange((prev) => prev.filter((_, idx) => idx !== i))
   }
 
   const handleKeyDown = (e) => {
     if (e.key === ' ') {
       e.preventDefault()
-      addTag(inputRef.current?.value || '')
-    } else if (e.key === 'Backspace' && !inputRef.current?.value && tags.length > 0) {
+      addTag(internalRef.current?.value || '')
+    } else if (e.key === 'Backspace' && !internalRef.current?.value && tags.length > 0) {
       removeTag(tags.length - 1)
     }
   }
 
   return (
-    <div className="wb-tag-input" onClick={() => inputRef.current?.focus()}>
+    <div className="wb-tag-input" onClick={() => internalRef.current?.focus()}>
       {tags.map((t, i) => (
         <span key={i} className="wb-tag">
           {t}
@@ -62,7 +74,7 @@ function TagInput({ tags, onTagsChange, placeholder, autoFocus }) {
         </span>
       ))}
       <input
-        ref={inputRef}
+        ref={internalRef}
         className="wb-tag-input-text"
         type="text"
         value={text}
@@ -143,18 +155,37 @@ function AddWordForm({ onAdded }) {
   const [jpTags, setJpTags] = useState([])
   const [chinese, setChinese] = useState('')
   const [saving, setSaving] = useState(false)
+  const [tagKey, setTagKey] = useState(0)
+  const jpTextRef = useRef('')
+  const jpTagsRef = useRef(jpTags)
+  // Always keep ref in sync so handleSubmit never reads stale state
+  jpTagsRef.current = jpTags
+
+  // Filter out text that is only whitespace (including Japanese space 　)
+  const isValidText = (s) => {
+    const trimmed = s.replace(/[\s　]+/g, '')
+    return trimmed.length > 0
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    const jp = jpTags.join('/')
+
+    const tags = jpTagsRef.current
+    // Include pending text from the input (not yet confirmed as a tag)
+    const pendingText = (jpTextRef.current || '').trim()
+    const allTags = isValidText(pendingText) ? [...tags, pendingText] : tags
+    if (allTags.length === 0) return
+
+    const jp = allTags.join('/')
     const cn = chinese.trim()
-    if (!jp || !cn) return
+    if (!cn) return
 
     setSaving(true)
     try {
       await addWord(jp, cn)
       setJpTags([])
       setChinese('')
+      setTagKey((k) => k + 1)
       onAdded()
     } catch (err) {
       // silent
@@ -163,13 +194,22 @@ function AddWordForm({ onAdded }) {
     }
   }
 
+  const isFormValid = () => {
+    const pendingText = (jpTextRef.current || '').trim()
+    const hasJp = jpTags.length > 0 || isValidText(pendingText)
+    const cn = chinese.trim()
+    return hasJp && cn.length > 0
+  }
+
   return (
     <form className="wb-add-form" onSubmit={handleSubmit}>
       <TagInput
+        key={tagKey}
         tags={jpTags}
         onTagsChange={setJpTags}
-        placeholder="日语单词（回车添加多种写法）..."
+        placeholder="日语单词（空格添加多种写法）..."
         autoFocus
+        textRef={jpTextRef}
       />
       <input
         className="wb-input"
@@ -178,7 +218,7 @@ function AddWordForm({ onAdded }) {
         value={chinese}
         onChange={(e) => setChinese(e.target.value)}
       />
-      <button className="wb-btn wb-btn-primary" type="submit" disabled={saving}>
+      <button className="wb-btn wb-btn-primary" type="submit" disabled={saving || !isFormValid()}>
         {saving ? '添加中...' : '添加'}
       </button>
     </form>
@@ -571,30 +611,30 @@ function WordTableModal({ words, onClose, onDelete, onUpdate }) {
               </tbody>
             </table>
           )}
-
-          {/* Footer: Save/Cancel when editing or deleting */}
-          {(editingId || deletingId) && (
-            <div className="wb-modal-footer">
-              <button
-                className="wb-btn wb-btn-secondary"
-                onClick={editingId ? cancelEdit : cancelDelete}
-                disabled={saving}
-              >
-                取消
-              </button>
-              <button
-                className={`wb-btn ${editingId ? 'wb-btn-primary' : 'wb-btn-danger'}`}
-                onClick={editingId ? handleSave : confirmDelete}
-                disabled={
-                  saving ||
-                  (editingId && (editJpTags.length === 0 || !editCn.trim()))
-                }
-              >
-                {saving ? '保存中...' : editingId ? '保存' : '确认删除'}
-              </button>
-            </div>
-          )}
         </div>
+
+        {/* Footer: Save/Cancel when editing or deleting — fixed at bottom */}
+        {(editingId || deletingId) && (
+          <div className="wb-modal-footer">
+            <button
+              className="wb-btn wb-btn-secondary"
+              onClick={editingId ? cancelEdit : cancelDelete}
+              disabled={saving}
+            >
+              取消
+            </button>
+            <button
+              className={`wb-btn ${editingId ? 'wb-btn-primary' : 'wb-btn-danger'}`}
+              onClick={editingId ? handleSave : confirmDelete}
+              disabled={
+                saving ||
+                (editingId && (editJpTags.length === 0 || !editCn.trim()))
+              }
+            >
+              {saving ? '保存中...' : editingId ? '保存' : '确认删除'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
