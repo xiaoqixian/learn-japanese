@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
   isDbReady,
   createDatabase,
@@ -259,26 +259,23 @@ function WordList({ words, onDelete }) {
 // ── Quiz mode ──────────────────────────────────────────────────
 function QuizMode({ words, onBack }) {
   const [quizWord, setQuizWord] = useState(null)
-  const [showJapanese, setShowJapanese] = useState(true)
-  const [jpVariant, setJpVariant] = useState('')
   const [input, setInput] = useState('')
   const [result, setResult] = useState(null)
   const [shaking, setShaking] = useState(false)
   const [score, setScore] = useState({ correct: 0, wrong: 0 })
   const [answerRevealed, setAnswerRevealed] = useState(false)
   const inputRef = useRef(null)
+  const answerRef = useRef(null)
 
   const pickWord = useCallback(() => {
     if (words.length === 0) return
     const idx = Math.floor(Math.random() * words.length)
     const word = words[idx]
-    const showJp = Math.random() > 0.5
     setQuizWord(word)
-    setShowJapanese(showJp)
 
-    // Pick a random Japanese variant
+    // Pick a random Japanese variant for answer reference
     const variants = splitJp(word.japanese)
-    setJpVariant(variants[Math.floor(Math.random() * variants.length)] || word.japanese)
+    answerRef.current = variants[Math.floor(Math.random() * variants.length)] || word.japanese
 
     setInput('')
     setResult(null)
@@ -301,10 +298,7 @@ function QuizMode({ words, onBack }) {
 
     // Accept any of the Japanese variants as correct
     const variants = splitJp(quizWord.japanese)
-    const correctAnswer = showJapanese ? quizWord.chinese : variants
-    const isCorrect = showJapanese
-      ? trimmed.toLowerCase() === correctAnswer.toLowerCase()
-      : variants.some((v) => v.toLowerCase() === trimmed.toLowerCase())
+    const isCorrect = variants.some((v) => v.toLowerCase() === trimmed.toLowerCase())
 
     if (isCorrect) {
       setResult('correct')
@@ -342,8 +336,6 @@ function QuizMode({ words, onBack }) {
 
   if (!quizWord) return null
 
-  const promptText = showJapanese ? jpVariant : quizWord.chinese
-  const promptLabel = showJapanese ? '请输入对应的中文释义' : '请输入对应的日语单词'
   const allVariants = splitJp(quizWord.japanese)
 
   return (
@@ -356,13 +348,13 @@ function QuizMode({ words, onBack }) {
 
       {/* Prompt card */}
       <div className={`wb-quiz-card ${shaking ? 'shake' : ''} ${result === 'correct' ? 'wb-card-correct' : ''}`}>
-        <div className="wb-quiz-label">{promptLabel}</div>
+        <div className="wb-quiz-label">请输入对应的日语单词</div>
         <div
           className="wb-quiz-prompt"
           onClick={handleWordClick}
           title="点击查看答案"
         >
-          {promptText}
+          {quizWord.chinese}
         </div>
       </div>
 
@@ -371,7 +363,7 @@ function QuizMode({ words, onBack }) {
         <div className="wb-answer-reveal">
           <div className="wb-answer-label">答案：</div>
           <div className="wb-answer-text">
-            {showJapanese ? quizWord.chinese : allVariants.join(' / ')}
+            {allVariants.join(' / ')}
           </div>
           <button className="wb-btn wb-btn-primary" onClick={pickWord}>
             下一题 →
@@ -389,7 +381,7 @@ function QuizMode({ words, onBack }) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={showJapanese ? '输入中文...' : '输入日语...'}
+            placeholder="输入日语..."
             autoComplete="off"
           />
         </div>
@@ -403,6 +395,35 @@ function QuizMode({ words, onBack }) {
   )
 }
 
+// ── Highlight text helper ──────────────────────────────────────
+function HighlightText({ text, query }) {
+  if (!query || !query.trim()) return text
+  const q = query.toLowerCase()
+  const chars = [...text]
+  const parts = []
+  let i = 0
+  while (i < chars.length) {
+    if (q.includes(chars[i].toLowerCase())) {
+      const start = i
+      while (i < chars.length && q.includes(chars[i].toLowerCase())) {
+        i++
+      }
+      parts.push(
+        <mark key={start} className="wb-hl">
+          {text.slice(start, i)}
+        </mark>
+      )
+    } else {
+      const start = i
+      while (i < chars.length && !q.includes(chars[i].toLowerCase())) {
+        i++
+      }
+      parts.push(<span key={start}>{text.slice(start, i)}</span>)
+    }
+  }
+  return parts
+}
+
 // ── Word Table Modal ───────────────────────────────────────────
 function WordTableModal({ words, onClose, onDelete, onUpdate }) {
   const [editingId, setEditingId] = useState(null)
@@ -412,6 +433,25 @@ function WordTableModal({ words, onClose, onDelete, onUpdate }) {
   const [pendingVariant, setPendingVariant] = useState('')
   const [deletingId, setDeletingId] = useState(null)
   const variantInputRef = useRef(null)
+  const [searchQuery, setSearchQuery] = useState('')
+
+  // Filter and sort words by search query relevance
+  const displayWords = useMemo(() => {
+    if (!searchQuery.trim()) return words
+    const q = searchQuery.trim().toLowerCase()
+    const scored = words
+      .map((w) => {
+        const combined = (w.japanese + w.chinese).toLowerCase()
+        let score = 0
+        for (const ch of q) {
+          if (combined.includes(ch)) score++
+        }
+        return { word: w, score }
+      })
+      .filter(({ score }) => score > 0)
+      .sort((a, b) => b.score - a.score)
+    return scored.map(({ word }) => word)
+  }, [words, searchQuery])
 
   const startEdit = (word) => {
     setDeletingId(null)
@@ -501,6 +541,15 @@ function WordTableModal({ words, onClose, onDelete, onUpdate }) {
     }
   }
 
+  // Close modal on Escape key
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
   return (
     <div className="wb-modal-overlay" onClick={onClose}>
       <div className="wb-modal" onClick={(e) => e.stopPropagation()}>
@@ -511,8 +560,20 @@ function WordTableModal({ words, onClose, onDelete, onUpdate }) {
           </button>
         </div>
         <div className="wb-modal-body">
+          {words.length > 0 && (
+            <input
+              className="wb-search-input"
+              type="text"
+              placeholder="搜索单词..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              autoComplete="off"
+            />
+          )}
           {words.length === 0 ? (
             <div className="wb-empty">还没有添加单词</div>
+          ) : displayWords.length === 0 ? (
+            <div className="wb-empty">未找到匹配的单词</div>
           ) : (
             <table className="wb-table">
               <thead>
@@ -523,7 +584,7 @@ function WordTableModal({ words, onClose, onDelete, onUpdate }) {
                 </tr>
               </thead>
               <tbody>
-                {words.map((w) =>
+                {displayWords.map((w) =>
                   editingId === w.id ? (
                     <tr key={w.id} className="wb-table-row-editing">
                       <td className="wb-table-jp">
@@ -585,7 +646,11 @@ function WordTableModal({ words, onClose, onDelete, onUpdate }) {
                       >
                         {splitJp(w.japanese).map((v, i) => (
                           <span key={i} className="wb-variant">
-                            {v}
+                            {searchQuery.trim() ? (
+                              <HighlightText text={v} query={searchQuery} />
+                            ) : (
+                              v
+                            )}
                           </span>
                         ))}
                       </td>
@@ -594,7 +659,11 @@ function WordTableModal({ words, onClose, onDelete, onUpdate }) {
                         onClick={() => startEdit(w)}
                         title="点击编辑"
                       >
-                        {w.chinese}
+                        {searchQuery.trim() ? (
+                          <HighlightText text={w.chinese} query={searchQuery} />
+                        ) : (
+                          w.chinese
+                        )}
                       </td>
                       <td>
                         <button
@@ -681,6 +750,16 @@ export default function WordBook() {
     },
     [refreshWords]
   )
+
+  // Recover database state when navigating back to this page
+  // (db module singleton persists across component mounts/unmounts)
+  useEffect(() => {
+    if (isDbReady()) {
+      setDbReady(true)
+      setDbFileName(getDbFileName() || '')
+      setWords(getAllWords())
+    }
+  }, [])
 
   // If File System Access API is not available, show warning
   if (!hasFileApi) {
