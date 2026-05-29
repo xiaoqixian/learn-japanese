@@ -5,6 +5,10 @@ import {
   GOJUON_COLS,
   GOJUON_ROWS,
   gojuonExtra,
+  dakuonGrid,
+  DAKUON_ROWS,
+  handakuonGrid,
+  HANDAKUON_ROWS,
   allRomaji,
   kanaGroups,
 } from '../data/kana'
@@ -90,10 +94,25 @@ function generateQuestion(mode, quizPreference = 'mixed', difficultyScores = {},
   }
 }
 
-// ── Gojuon Grid sub-component ──────────────────────────────────────
-function GojuonGrid({
+// ── Generic Kana Grid sub-component ────────────────────────────────
+// Renders any kana grid table (seion, dakuon, or handakuon).
+// Props:
+//   gridType  - 'hiragana' | 'katakana'  (controls which char to display)
+//   label     - displayed above the grid
+//   gridData  - array of rows, each row is array of cell or null
+//   rowLabels - array of row label strings (same length as gridData)
+//   colHeaders - array of column header strings (default: GOJUON_COLS)
+//   extraCell - optional single cell to render as an extra row at bottom
+//   found     - boolean: whether the correct cell has been found
+//   selected  - { row, col } | null: currently selected cell
+//   onCellClick - (rowIdx, colIdx, cell, gridType) => void
+function KanaGrid({
   gridType,
   label,
+  gridData,
+  rowLabels,
+  colHeaders = GOJUON_COLS,
+  extraCell,
   found,
   selected,
   onCellClick,
@@ -115,10 +134,6 @@ function GojuonGrid({
     return gridType === 'hiragana' ? cell.hiragana : cell.katakana
   }
 
-  const isExtraSelected =
-    selected && selected.row === -1 && selected.col === 4
-  const extraClass = found && isExtraSelected ? 'grid-cell correct' : 'grid-cell'
-
   return (
     <div className="grid-container">
       <div className="grid-label">{label}</div>
@@ -126,7 +141,7 @@ function GojuonGrid({
         {/* Column headers */}
         <div className="grid-row grid-row-header">
           <div className="grid-cell header-cell" />
-          {GOJUON_COLS.map((col) => (
+          {colHeaders.map((col) => (
             <div key={col} className="grid-cell header-cell">
               {col}
             </div>
@@ -134,10 +149,10 @@ function GojuonGrid({
         </div>
 
         {/* Data rows */}
-        {gojuonGrid.map((row, rowIdx) => (
+        {gridData.map((row, rowIdx) => (
           <div key={rowIdx} className="grid-row">
             <div className="grid-cell row-label">
-              {GOJUON_ROWS[rowIdx]}
+              {rowLabels[rowIdx]}
             </div>
             {row.map((cell, colIdx) => {
               if (!cell) {
@@ -156,24 +171,34 @@ function GojuonGrid({
           </div>
         ))}
 
-        {/* Extra row: ん／ン */}
-        <div className="grid-row">
-          <div className="grid-cell row-label" />
-          <div className="grid-cell empty" />
-          <div className="grid-cell empty" />
-          <div className="grid-cell empty" />
-          <div className="grid-cell empty" />
-          <div
-            className={extraClass}
-            onClick={() =>
-              onCellClick(-1, 4, gojuonExtra, gridType)
-            }
-          >
-            {gridType === 'hiragana'
-              ? gojuonExtra.hiragana
-              : gojuonExtra.katakana}
+        {/* Optional extra row (e.g. ん／ン) */}
+        {extraCell && (
+          <div className="grid-row">
+            <div className="grid-cell row-label" />
+            {colHeaders.map((_, colIdx) => {
+              // Place the extra cell in the last column if match, else empty
+              if (colIdx === colHeaders.length - 1) {
+                const extraClass =
+                  found &&
+                  selected &&
+                  selected.row === -1 &&
+                  selected.col === colIdx
+                    ? 'grid-cell correct'
+                    : 'grid-cell'
+                return (
+                  <div
+                    key={colIdx}
+                    className={extraClass}
+                    onClick={() => onCellClick(-1, colIdx, extraCell, gridType)}
+                  >
+                    {getChar(extraCell)}
+                  </div>
+                )
+              }
+              return <div key={colIdx} className="grid-cell empty" />
+            })}
           </div>
-        </div>
+        )}
       </div>
     </div>
   )
@@ -489,26 +514,72 @@ export default function KanaQuiz() {
           </div>
         )}
 
-        {/* Grid mode: gojuon chart click */}
+        {/* Grid mode: kana chart click */}
         {isGridMode && (
           <div className="grids-wrapper">
             {showHiraganaGrid && (
-              <GojuonGrid
-                gridType="hiragana"
-                label="平假名"
-                found={gridState.found.hiragana}
-                selected={gridState.selected.hiragana}
-                onCellClick={handleGridClick}
-              />
+              <>
+                <KanaGrid
+                  gridType="hiragana"
+                  label="清音"
+                  gridData={gojuonGrid}
+                  rowLabels={GOJUON_ROWS}
+                  extraCell={gojuonExtra}
+                  found={gridState.found.hiragana}
+                  selected={gridState.selected.hiragana}
+                  onCellClick={handleGridClick}
+                />
+                <KanaGrid
+                  gridType="hiragana"
+                  label="浊音"
+                  gridData={dakuonGrid}
+                  rowLabels={DAKUON_ROWS}
+                  found={gridState.found.hiragana}
+                  selected={gridState.selected.hiragana}
+                  onCellClick={handleGridClick}
+                />
+                <KanaGrid
+                  gridType="hiragana"
+                  label="半浊音"
+                  gridData={handakuonGrid}
+                  rowLabels={HANDAKUON_ROWS}
+                  found={gridState.found.hiragana}
+                  selected={gridState.selected.hiragana}
+                  onCellClick={handleGridClick}
+                />
+              </>
             )}
             {showKatakanaGrid && (
-              <GojuonGrid
-                gridType="katakana"
-                label="片假名"
-                found={gridState.found.katakana}
-                selected={gridState.selected.katakana}
-                onCellClick={handleGridClick}
-              />
+              <>
+                <KanaGrid
+                  gridType="katakana"
+                  label="清音"
+                  gridData={gojuonGrid}
+                  rowLabels={GOJUON_ROWS}
+                  extraCell={gojuonExtra}
+                  found={gridState.found.katakana}
+                  selected={gridState.selected.katakana}
+                  onCellClick={handleGridClick}
+                />
+                <KanaGrid
+                  gridType="katakana"
+                  label="浊音"
+                  gridData={dakuonGrid}
+                  rowLabels={DAKUON_ROWS}
+                  found={gridState.found.katakana}
+                  selected={gridState.selected.katakana}
+                  onCellClick={handleGridClick}
+                />
+                <KanaGrid
+                  gridType="katakana"
+                  label="半浊音"
+                  gridData={handakuonGrid}
+                  rowLabels={HANDAKUON_ROWS}
+                  found={gridState.found.katakana}
+                  selected={gridState.selected.katakana}
+                  onCellClick={handleGridClick}
+                />
+              </>
             )}
           </div>
         )}

@@ -1,4 +1,4 @@
-// All basic hiragana and katakana characters with their romaji readings
+// ── All basic hiragana (seion / 清音) ──────────────────────────────
 export const hiragana = [
   { kana: 'あ', romaji: 'a' },
   { kana: 'い', romaji: 'i' },
@@ -48,6 +48,7 @@ export const hiragana = [
   { kana: 'ん', romaji: 'n' },
 ]
 
+// ── All basic katakana (seion / 清音) ─────────────────────────────
 export const katakana = [
   { kana: 'ア', romaji: 'a' },
   { kana: 'イ', romaji: 'i' },
@@ -97,25 +98,103 @@ export const katakana = [
   { kana: 'ン', romaji: 'n' },
 ]
 
-// Build reverse mapping: romaji → { hiragana, katakana }
+// ── Dakuon (voiced) hiragana / 濁音 ──────────────────────────────
+export const dakuonHiragana = [
+  { kana: 'が', romaji: 'ga' },
+  { kana: 'ぎ', romaji: 'gi' },
+  { kana: 'ぐ', romaji: 'gu' },
+  { kana: 'げ', romaji: 'ge' },
+  { kana: 'ご', romaji: 'go' },
+  { kana: 'ざ', romaji: 'za' },
+  { kana: 'じ', romaji: 'ji' },
+  { kana: 'ず', romaji: 'zu' },
+  { kana: 'ぜ', romaji: 'ze' },
+  { kana: 'ぞ', romaji: 'zo' },
+  { kana: 'だ', romaji: 'da' },
+  { kana: 'ぢ', romaji: 'di' },
+  { kana: 'づ', romaji: 'du' },
+  { kana: 'で', romaji: 'de' },
+  { kana: 'ど', romaji: 'do' },
+  { kana: 'ば', romaji: 'ba' },
+  { kana: 'び', romaji: 'bi' },
+  { kana: 'ぶ', romaji: 'bu' },
+  { kana: 'べ', romaji: 'be' },
+  { kana: 'ぼ', romaji: 'bo' },
+]
+
+// ── Dakuon (voiced) katakana / 濁音 ──────────────────────────────
+export const dakuonKatakana = [
+  { kana: 'ガ', romaji: 'ga' },
+  { kana: 'ギ', romaji: 'gi' },
+  { kana: 'グ', romaji: 'gu' },
+  { kana: 'ゲ', romaji: 'ge' },
+  { kana: 'ゴ', romaji: 'go' },
+  { kana: 'ザ', romaji: 'za' },
+  { kana: 'ジ', romaji: 'ji' },
+  { kana: 'ズ', romaji: 'zu' },
+  { kana: 'ゼ', romaji: 'ze' },
+  { kana: 'ゾ', romaji: 'zo' },
+  { kana: 'ダ', romaji: 'da' },
+  { kana: 'ヂ', romaji: 'di' },
+  { kana: 'ヅ', romaji: 'du' },
+  { kana: 'デ', romaji: 'de' },
+  { kana: 'ド', romaji: 'do' },
+  { kana: 'バ', romaji: 'ba' },
+  { kana: 'ビ', romaji: 'bi' },
+  { kana: 'ブ', romaji: 'bu' },
+  { kana: 'ベ', romaji: 'be' },
+  { kana: 'ボ', romaji: 'bo' },
+]
+
+// ── Handakuon (semi-voiced) hiragana / 半濁音 ─────────────────────
+export const handakuonHiragana = [
+  { kana: 'ぱ', romaji: 'pa' },
+  { kana: 'ぴ', romaji: 'pi' },
+  { kana: 'ぷ', romaji: 'pu' },
+  { kana: 'ぺ', romaji: 'pe' },
+  { kana: 'ぽ', romaji: 'po' },
+]
+
+// ── Handakuon (semi-voiced) katakana / 半濁音 ─────────────────────
+export const handakuonKatakana = [
+  { kana: 'パ', romaji: 'pa' },
+  { kana: 'ピ', romaji: 'pi' },
+  { kana: 'プ', romaji: 'pu' },
+  { kana: 'ペ', romaji: 'pe' },
+  { kana: 'ポ', romaji: 'po' },
+]
+
+// ── Build reverse mapping: romaji → { hiragana, katakana } ──────
+// Includes seion, dakuon, and handakuon.
+// Note: じ/ジ and ぢ/ヂ share romaji 'ji' — but since ぢ uses 'di' there's no conflict.
+// Similarly ず/ズ uses 'zu' and づ/ヅ uses 'du'.
 export const romajiMap = {}
-hiragana.forEach((h) => {
-  romajiMap[h.romaji] = { ...romajiMap[h.romaji], hiragana: h.kana }
-})
-katakana.forEach((k) => {
-  romajiMap[k.romaji] = { ...romajiMap[k.romaji], katakana: k.kana }
-})
+function addToMap(arr, key) {
+  arr.forEach((item) => {
+    romajiMap[item.romaji] = { ...romajiMap[item.romaji], [key]: item.kana }
+  })
+}
+addToMap(hiragana, 'hiragana')
+addToMap(katakana, 'katakana')
+addToMap(dakuonHiragana, 'hiragana')
+addToMap(dakuonKatakana, 'katakana')
+addToMap(handakuonHiragana, 'hiragana')
+addToMap(handakuonKatakana, 'katakana')
 
-// All unique romaji values (46 basic sounds)
-export const allRomaji = [...new Set(hiragana.map((h) => h.romaji))]
+// All unique romaji values (seion + dakuon + handakuon)
+export const allRomaji = [
+  ...new Set([
+    ...hiragana.map((h) => h.romaji),
+    ...dakuonHiragana.map((h) => h.romaji),
+    ...handakuonHiragana.map((h) => h.romaji),
+  ]),
+]
 
-// Column headers for gojuon
+// ── Grid column headers ──────────────────────────────────────────
 export const GOJUON_COLS = ['a', 'i', 'u', 'e', 'o']
-
-// Row labels for gojuon
 export const GOJUON_ROWS = ['あ', 'か', 'さ', 'た', 'な', 'は', 'ま', 'や', 'ら', 'わ']
 
-// Gojuon grid: 10 rows × 5 columns, some cells are null (irregular slots)
+// ── Seion 五十音 grid (10 rows × 5 cols) ─────────────────────────
 // Each non-null cell: { hiragana, katakana, romaji }
 export const gojuonGrid = [
   [
@@ -190,11 +269,62 @@ export const gojuonGrid = [
   ],
 ]
 
-// The standalone ん／ン at the bottom (not part of the main 10-row grid)
+// The standalone ん／ン (not part of the main 10-row grid)
 export const gojuonExtra = { hiragana: 'ん', katakana: 'ン', romaji: 'n' }
 
-// Group definitions for group-selection filter (2×5 sidebar panel)
-// Each group maps to one 五十音 row; ん is always included regardless of selection.
+// ── Dakuon grid rows (4 rows × 5 cols): g, z, d, b ──────────────
+export const DAKUON_ROWS = ['g', 'z', 'd', 'b']
+
+export const dakuonGrid = [
+  // g-row
+  [
+    { hiragana: 'が', katakana: 'ガ', romaji: 'ga' },
+    { hiragana: 'ぎ', katakana: 'ギ', romaji: 'gi' },
+    { hiragana: 'ぐ', katakana: 'グ', romaji: 'gu' },
+    { hiragana: 'げ', katakana: 'ゲ', romaji: 'ge' },
+    { hiragana: 'ご', katakana: 'ゴ', romaji: 'go' },
+  ],
+  // z-row
+  [
+    { hiragana: 'ざ', katakana: 'ザ', romaji: 'za' },
+    { hiragana: 'じ', katakana: 'ジ', romaji: 'ji' },
+    { hiragana: 'ず', katakana: 'ズ', romaji: 'zu' },
+    { hiragana: 'ぜ', katakana: 'ゼ', romaji: 'ze' },
+    { hiragana: 'ぞ', katakana: 'ゾ', romaji: 'zo' },
+  ],
+  // d-row
+  [
+    { hiragana: 'だ', katakana: 'ダ', romaji: 'da' },
+    { hiragana: 'ぢ', katakana: 'ヂ', romaji: 'di' },
+    { hiragana: 'づ', katakana: 'ヅ', romaji: 'du' },
+    { hiragana: 'で', katakana: 'デ', romaji: 'de' },
+    { hiragana: 'ど', katakana: 'ド', romaji: 'do' },
+  ],
+  // b-row
+  [
+    { hiragana: 'ば', katakana: 'バ', romaji: 'ba' },
+    { hiragana: 'び', katakana: 'ビ', romaji: 'bi' },
+    { hiragana: 'ぶ', katakana: 'ブ', romaji: 'bu' },
+    { hiragana: 'べ', katakana: 'ベ', romaji: 'be' },
+    { hiragana: 'ぼ', katakana: 'ボ', romaji: 'bo' },
+  ],
+]
+
+// ── Handakuon grid rows (1 row × 5 cols): p ──────────────────────
+export const HANDAKUON_ROWS = ['p']
+
+export const handakuonGrid = [
+  [
+    { hiragana: 'ぱ', katakana: 'パ', romaji: 'pa' },
+    { hiragana: 'ぴ', katakana: 'ピ', romaji: 'pi' },
+    { hiragana: 'ぷ', katakana: 'プ', romaji: 'pu' },
+    { hiragana: 'ぺ', katakana: 'ペ', romaji: 'pe' },
+    { hiragana: 'ぽ', katakana: 'ポ', romaji: 'po' },
+  ],
+]
+
+// ── Group definitions for group-selection sidebar ────────────────
+// Each group maps to one 五十音 row; ん is always included regardless.
 export const kanaGroups = [
   { key: 'a', label: 'a', romaji: ['a', 'i', 'u', 'e', 'o'] },
   { key: 'k', label: 'k', romaji: ['ka', 'ki', 'ku', 'ke', 'ko'] },
@@ -206,5 +336,12 @@ export const kanaGroups = [
   { key: 'y', label: 'y', romaji: ['ya', 'yu', 'yo'] },
   { key: 'r', label: 'r', romaji: ['ra', 'ri', 'ru', 're', 'ro'] },
   { key: 'w', label: 'w', romaji: ['wa', 'wo'] },
+  // Dakuon groups
+  { key: 'g', label: 'g', romaji: ['ga', 'gi', 'gu', 'ge', 'go'] },
+  { key: 'z', label: 'z', romaji: ['za', 'ji', 'zu', 'ze', 'zo'] },
+  { key: 'd', label: 'd', romaji: ['da', 'di', 'du', 'de', 'do'] },
+  { key: 'b', label: 'b', romaji: ['ba', 'bi', 'bu', 'be', 'bo'] },
+  // Handakuon group
+  { key: 'p', label: 'p', romaji: ['pa', 'pi', 'pu', 'pe', 'po'] },
 ]
 
