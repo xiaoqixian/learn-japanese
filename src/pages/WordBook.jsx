@@ -264,6 +264,7 @@ function QuizMode({ words, onBack }) {
   const [shaking, setShaking] = useState(false)
   const [score, setScore] = useState({ correct: 0, wrong: 0 })
   const [answerRevealed, setAnswerRevealed] = useState(false)
+  const [isComposing, setIsComposing] = useState(false)
   const inputRef = useRef(null)
   const answerRef = useRef(null)
 
@@ -296,6 +297,9 @@ function QuizMode({ words, onBack }) {
     const trimmed = input.trim()
     if (!trimmed) return
 
+    // Clear input immediately upon submission (no mixing with next word)
+    setInput('')
+
     // Accept any of the Japanese variants as correct
     const variants = splitJp(quizWord.japanese)
     const isCorrect = variants.some((v) => v.toLowerCase() === trimmed.toLowerCase())
@@ -310,7 +314,6 @@ function QuizMode({ words, onBack }) {
       setShaking(true)
       setTimeout(() => {
         setShaking(false)
-        setInput('')
         setResult(null)
         inputRef.current?.focus()
       }, 500)
@@ -318,10 +321,13 @@ function QuizMode({ words, onBack }) {
   }
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && !isComposing) {
       handleSubmit()
     }
   }
+
+  const handleCompositionStart = () => setIsComposing(true)
+  const handleCompositionEnd = () => setIsComposing(false)
 
   if (words.length === 0) {
     return (
@@ -381,6 +387,8 @@ function QuizMode({ words, onBack }) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
+            onCompositionStart={handleCompositionStart}
+            onCompositionEnd={handleCompositionEnd}
             placeholder="输入日语..."
             autoComplete="off"
           />
@@ -425,7 +433,7 @@ function HighlightText({ text, query }) {
 }
 
 // ── Word Table Modal ───────────────────────────────────────────
-function WordTableModal({ words, onClose, onDelete, onUpdate }) {
+function WordTableModal({ words, onClose, onDelete, onUpdate, inline }) {
   const [editingId, setEditingId] = useState(null)
   const [editJpTags, setEditJpTags] = useState([])
   const [editCn, setEditCn] = useState('')
@@ -541,14 +549,171 @@ function WordTableModal({ words, onClose, onDelete, onUpdate }) {
     }
   }
 
-  // Close modal on Escape key
+  // Close modal on Escape key (only in modal mode)
   useEffect(() => {
+    if (!onClose) return
     const handler = (e) => {
       if (e.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
+
+  // ── Render ──
+  // Inline mode: render without modal wrapper
+  if (inline) {
+    return (
+      <div className="wb-inline-content">
+        {words.length > 0 && (
+          <div className="wb-inline-search">
+            <input
+              className="wb-search-input"
+              type="text"
+              placeholder="搜索单词..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              autoComplete="off"
+            />
+          </div>
+        )}
+        <div className="wb-inline-table-scroll">
+          {words.length === 0 ? (
+            <div className="wb-empty">还没有添加单词</div>
+          ) : displayWords.length === 0 ? (
+            <div className="wb-empty">未找到匹配的单词</div>
+          ) : (
+            <table className="wb-table">
+              <thead>
+                <tr>
+                  <th>日语</th>
+                  <th>中文</th>
+                  <th style={{ width: 40 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {displayWords.map((w) =>
+                  editingId === w.id ? (
+                    <tr key={w.id} className="wb-table-row-editing">
+                      <td className="wb-table-jp">
+                        <div className="wb-variant-list">
+                          {editJpTags.map((v, i) => (
+                            <span key={i} className="wb-variant-edit">
+                              <input
+                                className="wb-variant-input"
+                                type="text"
+                                value={v}
+                                onChange={(e) => updateVariant(i, e.target.value)}
+                              />
+                              <button
+                                className="wb-variant-del"
+                                onClick={() => removeVariant(i)}
+                                title="删除此写法"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                          <span className="wb-variant-edit wb-variant-new">
+                            <input
+                              ref={variantInputRef}
+                              className="wb-variant-input"
+                              type="text"
+                              value={pendingVariant}
+                              onChange={(e) => setPendingVariant(e.target.value)}
+                              onKeyDown={handleVariantKeyDown}
+                              placeholder="新写法..."
+                            />
+                          </span>
+                        </div>
+                      </td>
+                      <td className="wb-table-cn">
+                        <input
+                          className="wb-table-input"
+                          type="text"
+                          value={editCn}
+                          onChange={(e) => setEditCn(e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <button
+                          className="wb-table-action wb-table-cancel"
+                          onClick={cancelEdit}
+                          title="取消"
+                        >
+                          ✕
+                        </button>
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr key={w.id} className={deletingId === w.id ? 'wb-table-row-deleting' : ''}>
+                      <td
+                        className="wb-table-jp wb-table-cell-clickable"
+                        onClick={() => startEdit(w)}
+                        title="点击编辑"
+                      >
+                        {splitJp(w.japanese).map((v, i) => (
+                          <span key={i} className="wb-variant">
+                            {searchQuery.trim() ? (
+                              <HighlightText text={v} query={searchQuery} />
+                            ) : (
+                              v
+                            )}
+                          </span>
+                        ))}
+                      </td>
+                      <td
+                        className="wb-table-cn wb-table-cell-clickable"
+                        onClick={() => startEdit(w)}
+                        title="点击编辑"
+                      >
+                        {searchQuery.trim() ? (
+                          <HighlightText text={w.chinese} query={searchQuery} />
+                        ) : (
+                          w.chinese
+                        )}
+                      </td>
+                      <td>
+                        <button
+                          className="wb-table-action wb-table-del"
+                          onClick={() => startDelete(w.id)}
+                          title="删除"
+                        >
+                          🗑
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Footer: Save/Cancel when editing or deleting */}
+        {(editingId || deletingId) && (
+          <div className="wb-inline-footer">
+            <button
+              className="wb-btn wb-btn-secondary"
+              onClick={editingId ? cancelEdit : cancelDelete}
+              disabled={saving}
+            >
+              取消
+            </button>
+            <button
+              className={`wb-btn ${editingId ? 'wb-btn-primary' : 'wb-btn-danger'}`}
+              onClick={editingId ? handleSave : confirmDelete}
+              disabled={
+                saving ||
+                (editingId && (editJpTags.length === 0 || !editCn.trim()))
+              }
+            >
+              {saving ? '保存中...' : editingId ? '保存' : '确认删除'}
+            </button>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="wb-modal-overlay" onClick={onClose}>
@@ -713,7 +878,6 @@ function WordTableModal({ words, onClose, onDelete, onUpdate }) {
 export default function WordBook() {
   const [dbReady, setDbReady] = useState(false)
   const [view, setView] = useState('manage') // 'manage' | 'quiz'
-  const [showTable, setShowTable] = useState(false)
   const [words, setWords] = useState([])
   const [dbFileName, setDbFileName] = useState('')
 
@@ -818,13 +982,12 @@ export default function WordBook() {
         {view === 'manage' ? (
           <div className="wb-manage">
             <AddWordForm onAdded={refreshWords} />
-            <button
-              className="wb-btn wb-btn-secondary"
-              style={{ marginTop: 16 }}
-              onClick={() => setShowTable(true)}
-            >
-              📖 查看单词本
-            </button>
+            <WordTableModal
+              words={words}
+              onDelete={handleDelete}
+              onUpdate={handleUpdate}
+              inline
+            />
           </div>
         ) : (
           <QuizMode
@@ -833,16 +996,6 @@ export default function WordBook() {
               setView('manage')
               refreshWords()
             }}
-          />
-        )}
-
-        {/* Word Table Modal */}
-        {showTable && (
-          <WordTableModal
-            words={words}
-            onClose={() => setShowTable(false)}
-            onDelete={handleDelete}
-            onUpdate={handleUpdate}
           />
         )}
       </div>
